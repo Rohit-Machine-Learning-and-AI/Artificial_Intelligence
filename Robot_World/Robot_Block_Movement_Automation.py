@@ -1,7 +1,3 @@
-# This file contains support code for B551 Hw2                                 # File version:  September 19, 2015                                            #  
-#   Name     : Rohit Nair
-#   Email    : Ronair@iu.edu
-
 import time
 from heapq import *
 import functools
