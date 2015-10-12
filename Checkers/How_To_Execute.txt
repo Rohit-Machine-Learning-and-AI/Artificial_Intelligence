@@ -1,3 +1,5 @@
 run gameplay.py with parameters as player names
 eg1 : python gameplay.py -v Minimax_AlphaBeta_HeuristicEvaluation simpleGreedy
 eg1 : python gameplay.py randomPlay humanPlay
+
+Thanks!
