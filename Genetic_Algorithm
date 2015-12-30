@@ -1,0 +1,157 @@
+import math
+import random
+import pickle
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+import copy
+
+def fitness(max_volume,volumes,prices):
+    totalP, totalV = 0, 0
+    n = len(volumes)
+    for i in range(n):
+        totalP += prices[i]
+        totalV += volumes[i]
+    if totalV > max_volume:
+        return 0
+    return totalP
+
+def randomSelection(population,fitnesses):
+    sum1 = 0
+    total = sum(fitnesses)/1.0
+    #if all chromozomes' are 0, to avoid divide by 0 error
+    if (total == 0): total = 1
+    p = []
+    r = random.random()
+    for i in range(len(population)):
+        sum1 += fitnesses[i]
+        p.append(sum1 / total)
+        
+    for i in range(len(population)):
+        if r < p[i]:
+            return population[i]
+    #in case it is not able to find a match, return last element
+    return population[-1]
+
+def reproduce(mom,dad):
+    pivot = random.randint(1,len(mom))
+    child1 = mom[0:pivot] + dad[pivot:len(mom)]
+    child2 = dad[0:pivot] + mom[pivot:len(mom)]
+    return child1, child2
+
+def mutate(child):
+    r = random.choice(child)
+    child[r] = child[r] ^ 1
+    return child
+
+def cal_fits(world,chromosomes):
+    fitnesses = []
+    for child in range(len(chromosomes)):
+        l = len(chromosomes[child])
+        volumes = [None]*l
+        prices = [None]*l
+        for i in range(len(chromosomes[child])):
+            volumes[i] = world[1][i] * chromosomes[child][i]
+            prices[i] = world[2][i] * chromosomes[child][i]
+        fitnesses.append(fitness(world[0], volumes, prices))
+    return fitnesses
+    
+def genetic_algorithm(world,popsize,max_years,mutation_probability):
+    chromlen = len(world[1])
+    
+#Make a random population
+    chromosomes = []
+    for chromNO in range(popsize):
+        chromosome = []
+        for chromEle in range(chromlen):
+            chromosome.append(random.randint(0,1))
+        chromosomes.append(chromosome)
+    fitnesses = cal_fits(world,chromosomes)
+
+#Elitism
+    elitismPercentage = 25
+    no_of_elites = elitismPercentage * popsize / 100
+    if no_of_elites % 2 > 0: no_of_elites -= 1
+    chromosomes3 = copy.deepcopy(chromosomes)
+    fitnesses3 = copy.deepcopy(fitnesses)
+    elites = []
+    for i in range(no_of_elites):
+        j = np.argmax(fitnesses3)
+        elites.append(chromosomes3[j])
+        chromosomes3.remove(chromosomes3[j])
+        fitnesses3.remove(fitnesses3[j])
+        
+#Crossover
+    fitnesses = cal_fits(world,chromosomes)
+    i = 0
+    #we dont want grandchildren
+    chromosomes3 = copy.deepcopy(chromosomes[0:popsize - no_of_elites])
+    while i < (popsize - no_of_elites):
+        child1 = randomSelection(chromosomes,fitnesses)
+        child2 = randomSelection(chromosomes,fitnesses)
+        chromosomes3[i], chromosomes3[i+1] = reproduce(child1, child2)
+        i+=2
+        
+#Mutate crossed over chromes with probability mutation_probability        
+    fitnesses = []
+    for child in range(popsize):
+        if random.random() < mutation_probability:
+            chromosomes[child] = mutate(chromosomes[child])
+        l = len(chromosomes[child])
+        volumes, prices = [None]*l, [None]*l
+        for i in range(l):
+            volumes[i] = world[1][i] * chromosomes[child][i]
+            prices[i] = world[2][i] * chromosomes[child][i]
+        f = 1
+        iters = 0
+        #if fitness is 0 try to mutate(as given in the research paper provided)
+        while (not f == 0) and iters < 100:
+            f = fitness(world[0], volumes, prices)
+            if f == 0:
+                mutate(chromosomes[child])
+            iters+=1
+        fitnesses.append(f)        
+    chromosomes = elites + chromosomes3
+
+    return chromosomes, fitnesses
+
+def run(popsize,max_years,mutation_probability):
+    table = pd.DataFrame(columns=["DIFFICULTY", "YEAR", "HIGH_SCORE", "AVERAGE_SCORE", "BEST_PLAN"])
+
+    sanity_check = (10, [10, 5, 8], [100,50,80])
+    for yr in range(1, max_years+1):
+        year_chromosomes, fitnesses = genetic_algorithm(sanity_check,popsize,max_years,mutation_probability)
+        table = table.append({'DIFFICULTY' : 'sanity_check', 'YEAR' : yr, 'HIGH_SCORE' : max(fitnesses),
+                'AVERAGE_SCORE' : np.mean(fitnesses), 'BEST_PLAN' : year_chromosomes[np.argmax(fitnesses)]}, ignore_index=True)
+    
+    easy = (20, [20, 5, 15, 8, 13], [10, 4, 11, 2, 9] )
+    for yr in range(1, max_years+1):
+        year_chromosomes, fitnesses = genetic_algorithm(easy,popsize,max_years,mutation_probability)
+        table = table.append({'DIFFICULTY' : 'easy', 'YEAR' : yr, 'HIGH_SCORE' : max(fitnesses),
+                'AVERAGE_SCORE' : np.mean(fitnesses), 'BEST_PLAN' : year_chromosomes[np.argmax(fitnesses)]}, ignore_index=True)
+    
+    medium = (100, [13, 19, 34, 1, 20, 4, 8, 24, 7, 18, 1, 31, 10, 23, 9, 27, 50, 6, 36, 9, 15],
+                   [26, 7, 34, 8, 29, 3, 11, 33, 7, 23, 8, 25, 13, 5, 16, 35, 50, 9, 30, 13, 14])
+    for yr in range(1, max_years+1):
+        year_chromosomes, fitnesses = genetic_algorithm(medium,popsize,max_years,mutation_probability)
+        table = table.append({'DIFFICULTY' : 'medium', 'YEAR' : yr, 'HIGH_SCORE' : max(fitnesses),
+                'AVERAGE_SCORE' : np.mean(fitnesses), 'BEST_PLAN' : year_chromosomes[np.argmax(fitnesses)]}, ignore_index=True)
+    
+    hard = (5000, norm.rvs(50,15,size=100), norm.rvs(200,60,size=100))
+    for yr in range(1, max_years+1):
+        year_chromosomes, fitnesses = genetic_algorithm(hard,popsize,max_years,mutation_probability)
+        table = table.append({'DIFFICULTY' : 'hard', 'YEAR' : yr, 'HIGH_SCORE' : max(fitnesses),
+                'AVERAGE_SCORE' : np.mean(fitnesses), 'BEST_PLAN' : year_chromosomes[np.argmax(fitnesses)]}, ignore_index=True)
+    
+    #print table
+    
+    for difficulty_group in ['sanity_check','easy','medium','hard']:
+        group = table[table['DIFFICULTY'] == difficulty_group]
+        bestrow = group.ix[group['HIGH_SCORE'].argmax()]
+        print("-------------------------------------------------------------")
+        print("Best year for difficulty {} is {} with high score {} and chromosome {}"\
+        .format(difficulty_group,int(bestrow['YEAR']), bestrow['HIGH_SCORE'], bestrow['BEST_PLAN']))
+    table.to_pickle("results.pkl") #saves the performance data, in case you want to refer to it later. pickled python objects can be loaded back later.
+
+if __name__ == "__main__":
+    run(30,10,0.02)
